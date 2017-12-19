@@ -3,7 +3,9 @@ package main
 // TODO: formatting and importing
 
 import (
+	"bytes"
 	"flag"
+	"fmt"
 	"go/ast"
 	"go/build"
 	"go/importer"
@@ -12,9 +14,10 @@ import (
 	"go/types"
 	"html/template"
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/tools/imports"
 )
 
 var (
@@ -58,9 +61,17 @@ func main() {
 	pkg := NewPackage(dir)
 	pkg.Check()
 
-	if err := t.Execute(os.Stdout, pkg); err != nil {
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, pkg); err != nil {
 		log.Fatal(err)
 	}
+
+	code, err := imports.Process(pkg.Name+"_stubbed.go", buf.Bytes(), nil)
+	if err != nil {
+		log.Fatal("cannot process imports: %s", err)
+	}
+
+	fmt.Println(string(code))
 }
 
 type Package struct {
@@ -212,13 +223,20 @@ func joinVars(vars []Var) string {
 func typeName(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.ArrayType:
-		return "[]" + typeName(t.Elt)
+		if t.Len == nil {
+			return "[]" + typeName(t.Elt)
+		} else {
+			log.Fatal("typeName: don't know how to handle non-slice arrays yet")
+		}
 	case *ast.Ident:
 		return t.Name
 	case *ast.SelectorExpr:
 		return typeName(t.X) + "." + t.Sel.Name
+	case *ast.StarExpr:
+		return "*" + typeName(t.X)
 	default:
-		log.Fatalf("unknown param type: %T", t)
-		return "" // won't happen
+		log.Fatalf("typeName: unknown node type: %T", t)
 	}
+
+	return ""
 }

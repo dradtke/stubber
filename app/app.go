@@ -1,5 +1,7 @@
 package app
 
+import "net/http"
+
 type Frobnicator interface {
-	Frobnicate()
+	Frobnicate(r *http.Request) ([]byte, error)
 }
