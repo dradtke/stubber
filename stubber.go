@@ -240,6 +240,12 @@ func (p *Package) TypeName(expr ast.Expr) string {
 	case *ast.MapType:
 		return "map[" + p.TypeName(t.Key) + "]" + p.TypeName(t.Value)
 
+	case *ast.InterfaceType:
+		if t.Methods != nil && len(t.Methods.List) > 0 {
+			log.Fatalf("Package.TypeName: does not currently support non-empty interface literal")
+		}
+		return "interface{}"
+
 	default:
 		log.Fatalf("Package.TypeName: unknown node type: %T", t)
 	}
