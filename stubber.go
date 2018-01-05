@@ -241,21 +241,33 @@ func (p *Package) genDecl(filename string, ts []string) func(ast.Node) bool {
 
 					if ftype.Params != nil {
 						for _, param := range ftype.Params.List {
-							v := Var{Type: typeName(param.Type)}
-							if len(param.Names) > 0 {
-								v.Name = param.Names[0].Name
+							if len(param.Names) == 0 {
+								ifunc.Params = append(ifunc.Params, Var{
+									Type: typeName(param.Type),
+								})
+							} else {
+								for _, ident := range param.Names {
+									ifunc.Params = append(ifunc.Params, Var{
+										Type: typeName(param.Type),
+										Name: ident.Name,
+									})
+								}
 							}
-							ifunc.Params = append(ifunc.Params, v)
 						}
 					}
 
 					if ftype.Results != nil {
 						for _, result := range ftype.Results.List {
-							v := Var{Type: typeName(result.Type)}
-							if len(result.Names) > 0 {
-								v.Name = result.Names[0].Name
+							if len(result.Names) == 0 {
+								ifunc.Results = append(ifunc.Results, Var{Type: typeName(result.Type)})
+							} else {
+								for _, ident := range result.Names {
+									ifunc.Results = append(ifunc.Results, Var{
+										Type: typeName(result.Type),
+										Name: ident.Name,
+									})
+								}
 							}
-							ifunc.Results = append(ifunc.Results, v)
 						}
 					}
 
@@ -338,6 +350,8 @@ func typeName(expr ast.Expr) string {
 		return typeName(t.X) + "." + t.Sel.Name
 	case *ast.StarExpr:
 		return "*" + typeName(t.X)
+	case *ast.MapType:
+		return "map[" + typeName(t.Key) + "]" + typeName(t.Value)
 	default:
 		log.Fatalf("typeName: unknown node type: %T", t)
 	}
