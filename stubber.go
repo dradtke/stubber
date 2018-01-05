@@ -274,7 +274,10 @@ func (p *Package) genDecl(filename string, ts []string) func(ast.Node) bool {
 				if !ok {
 					continue
 				}
-				iface := Interface{Name: tspec.Name.Name}
+				iface := Interface{
+					Name:     tspec.Name.Name,
+					External: p.External,
+				}
 
 				// If any type names were specified, make sure this type was included.
 				if len(ts) > 0 {
@@ -345,9 +348,13 @@ func (p *Package) genDecl(filename string, ts []string) func(ast.Node) bool {
 type Interface struct {
 	Name, QualifiedName string
 	Funcs               []Func
+	External            bool
 }
 
 func (i *Interface) ImplName() string {
+	if i.External {
+		return i.Name
+	}
 	return "Stubbed" + i.Name
 }
 
