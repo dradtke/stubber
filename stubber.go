@@ -62,8 +62,6 @@
 // in an easy-to-understand, type-safe manner.
 //
 // See the example folder for more information.
-//
-// TODO: record method calls with their arguments in each stub implementation
 package main
 
 import (

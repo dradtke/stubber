@@ -2,23 +2,44 @@
 
 package app
 
+// StubbedSessionManager is a stubbed implementation of SessionManager.
 type StubbedSessionManager struct {
-	CurrentUserStub func() (int64, error)
-	UserNameStub    func(id int64) (string, error)
+	// CurrentUserStub defines the implementation for CurrentUser.
+	CurrentUserStub  func() (int64, error)
+	currentUserCalls []struct{}
+	// UserNameStub defines the implementation for UserName.
+	UserNameStub  func(id int64) (string, error)
+	userNameCalls []struct{ Id int64 }
 }
 
+// CurrentUser delegates its behavior to the field CurrentUserStub.
 func (s *StubbedSessionManager) CurrentUser() (int64, error) {
 	if s.CurrentUserStub == nil {
 		panic("StubbedSessionManager.CurrentUser: nil method stub")
 	}
+	s.currentUserCalls = append(s.currentUserCalls, struct{}{})
 	return (s.CurrentUserStub)()
 }
 
+// CurrentUserCalls returns a slice of calls made to CurrentUser. Each element
+// of the slice represents the parameters that were provided.
+func (s *StubbedSessionManager) CurrentUserCalls() []struct{} {
+	return s.currentUserCalls
+}
+
+// UserName delegates its behavior to the field UserNameStub.
 func (s *StubbedSessionManager) UserName(id int64) (string, error) {
 	if s.UserNameStub == nil {
 		panic("StubbedSessionManager.UserName: nil method stub")
 	}
+	s.userNameCalls = append(s.userNameCalls, struct{ Id int64 }{Id: id})
 	return (s.UserNameStub)(id)
+}
+
+// UserNameCalls returns a slice of calls made to UserName. Each element
+// of the slice represents the parameters that were provided.
+func (s *StubbedSessionManager) UserNameCalls() []struct{ Id int64 } {
+	return s.userNameCalls
 }
 
 // Compile-time check that the implementation matches the interface.
