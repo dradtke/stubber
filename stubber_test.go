@@ -17,7 +17,7 @@ func TestStubber(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	main.Main(nil, "./testdata/pkg", &buf)
+	main.Main(nil, "./testdata/pkg", "", &buf)
 	t.Log(buf.String())
 
 	if !bytes.Equal(buf.Bytes(), expected) {

@@ -4,7 +4,9 @@ package pkg
 
 import "database/sql"
 
+// StubbedSessionManager is a stubbed implementation of SessionManager.
 type StubbedSessionManager struct {
+	// GetUserIDStub defines the implementation for GetUserID.
 	GetUserIDStub  func(db *sql.DB, username string) (int64, error)
 	getUserIDCalls []struct {
 		Db       *sql.DB
@@ -12,6 +14,7 @@ type StubbedSessionManager struct {
 	}
 }
 
+// GetUserID delegates its behavior to the field GetUserIDStub.
 func (s *StubbedSessionManager) GetUserID(db *sql.DB, username string) (int64, error) {
 	if s.GetUserIDStub == nil {
 		panic("StubbedSessionManager.GetUserID: nil method stub")
@@ -23,6 +26,8 @@ func (s *StubbedSessionManager) GetUserID(db *sql.DB, username string) (int64, e
 	return (s.GetUserIDStub)(db, username)
 }
 
+// GetUserIDCalls returns a slice of calls made to GetUserID. Each element
+// of the slice represents the parameters that were provided.
 func (s *StubbedSessionManager) GetUserIDCalls() []struct {
 	Db       *sql.DB
 	Username string
