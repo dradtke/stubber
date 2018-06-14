@@ -194,7 +194,7 @@ func Main(types []string, inputDir, outputDir string, out io.Writer) {
 
 		if out != nil {
 			if _, err := out.Write(code); err != nil {
-				log.Fatal("failed to write result: %s", err)
+				log.Fatalf("failed to write result: %s", err)
 			}
 		} else {
 			if err := ioutil.WriteFile(newFilename, code, 0644); err != nil {
@@ -298,7 +298,7 @@ func (p *Package) TypeName(expr ast.Expr) string {
 }
 
 func (p *Package) Check(ts []string) {
-	config := types.Config{Importer: importer.Default()}
+	config := types.Config{Importer: importer.For("source", nil)}
 	info := types.Info{}
 	files := make([]*ast.File, 0, len(p.files))
 	for _, f := range p.files {
