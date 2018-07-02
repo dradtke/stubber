@@ -126,7 +126,7 @@ var _ {{if $.Package.External}}{{$.Package.InputName}}.{{end}}{{.Name}} = (*{{.I
 func main() {
 	var (
 		typeNames = flag.String("types", "", "comma-separated list of type names; defaults to all interfaces")
-		output    = flag.String("output", "", "path to output directory; package name will be inferred from its name")
+		outputDir = flag.String("output", "", "path to output directory; '-' will write result to stdout")
 	)
 
 	log.SetFlags(0)
@@ -144,17 +144,14 @@ func main() {
 		inputDir = args[0]
 	}
 
-	var (
-		out       io.Writer
-		outputDir string
-	)
-	if *output == "-" {
+	var out io.Writer
+	if *outputDir == "-" {
 		out = os.Stdout
-	} else if *output == "" {
-		outputDir = inputDir
+	} else if *outputDir == "" {
+		*outputDir = inputDir
 	}
 
-	Main(types, inputDir, outputDir, out)
+	Main(types, inputDir, *outputDir, out)
 }
 
 func Main(types []string, inputDir, outputDir string, out io.Writer) {
@@ -197,7 +194,7 @@ func Main(types []string, inputDir, outputDir string, out io.Writer) {
 				log.Fatalf("failed to write result: %s", err)
 			}
 		} else {
-			if err := ioutil.WriteFile(newFilename, code, 0644); err != nil {
+			if err := ioutil.WriteFile(filepath.Join(outputDir, newFilename), code, 0644); err != nil {
 				log.Fatalf("failed to write output file %s: %s", newFilename, err)
 			}
 		}
