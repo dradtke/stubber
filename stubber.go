@@ -67,6 +67,7 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"go/ast"
 	"go/build"
 	"go/importer"
@@ -287,11 +288,33 @@ func (p *Package) TypeName(expr ast.Expr) string {
 		}
 		return "interface{}"
 
+	case *ast.Ellipsis:
+		return "..." + p.TypeName(t.Elt)
+
+	case *ast.FuncType:
+		var (
+			params  = p.FieldListString(t.Params)
+			results = p.FieldListString(t.Results)
+		)
+		return fmt.Sprintf("func(%s) (%s)", params, results)
+
 	default:
 		log.Fatalf("Package.TypeName: unknown node type: %T", t)
 	}
 
 	return ""
+}
+
+func (p *Package) FieldListString(fl *ast.FieldList) string {
+	var values []string
+	for _, field := range fl.List {
+		var names []string
+		for _, name := range field.Names {
+			names = append(names, name.Name)
+		}
+		values = append(values, strings.Join(names, ", ")+" "+p.TypeName(field.Type))
+	}
+	return strings.Join(values, ", ")
 }
 
 func (p *Package) Check(ts []string) {
@@ -423,11 +446,11 @@ func (f *Func) CallsName(public bool) string {
 }
 
 func (f *Func) ParamsString() string {
-	return joinVars(f.Params, ", ", false)
+	return joinVars(f.Params, ", ", false, false)
 }
 
 func (f *Func) ParamsStruct() string {
-	return "struct{" + joinVars(f.Params, "; ", true) + "}"
+	return "struct{" + joinVars(f.Params, "; ", true, true) + "}"
 }
 
 func (f *Func) ParamsStructValues() string {
@@ -441,13 +464,17 @@ func (f *Func) ParamsStructValues() string {
 func (f *Func) ParamNames() string {
 	parts := make([]string, 0, len(f.Params))
 	for _, v := range f.Params {
-		parts = append(parts, v.Name)
+		name := v.Name
+		if isVariadic(v.Type) {
+			name = name + "..."
+		}
+		parts = append(parts, name)
 	}
 	return strings.Join(parts, ", ")
 }
 
 func (f *Func) ResultsString() string {
-	s := joinVars(f.Results, ", ", false)
+	s := joinVars(f.Results, ", ", false, false)
 	if len(f.Results) > 1 || (f.HasResults() && f.Results[0].Name != "") {
 		s = "(" + s + ")"
 	}
@@ -463,14 +490,17 @@ type Var struct {
 	Type string
 }
 
-func joinVars(vars []Var, sep string, public bool) string {
+func joinVars(vars []Var, sep string, public, inStruct bool) string {
 	parts := make([]string, 0, len(vars))
 	for _, v := range vars {
-		name := v.Name
+		name, typ := v.Name, v.Type
 		if public {
 			name = publicize(name)
 		}
-		parts = append(parts, name+" "+v.Type)
+		if inStruct && isVariadic(v.Type) {
+			typ = "[]" + v.Type[3:]
+		}
+		parts = append(parts, name+" "+typ)
 	}
 	return strings.Join(parts, sep)
 }
@@ -499,4 +529,8 @@ func typeName(expr ast.Expr) string {
 // TODO: improve this to make some variable names more readable, e.g. "db" -> "DB"
 func publicize(name string) string {
 	return string(unicode.ToTitle(rune(name[0]))) + name[1:]
+}
+
+func isVariadic(typ string) bool {
+	return strings.HasPrefix(typ, "...")
 }

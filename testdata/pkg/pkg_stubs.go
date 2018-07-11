@@ -12,6 +12,12 @@ type StubbedSessionManager struct {
 		Db       *sql.DB
 		Username string
 	}
+	// DeactivateStub defines the implementation for Deactivate.
+	DeactivateStub  func(db *sql.DB, userIds ...int64)
+	deactivateCalls []struct {
+		Db      *sql.DB
+		UserIds []int64
+	}
 }
 
 // GetUserID delegates its behavior to the field GetUserIDStub.
@@ -33,6 +39,27 @@ func (s *StubbedSessionManager) GetUserIDCalls() []struct {
 	Username string
 } {
 	return s.getUserIDCalls
+}
+
+// Deactivate delegates its behavior to the field DeactivateStub.
+func (s *StubbedSessionManager) Deactivate(db *sql.DB, userIds ...int64) {
+	if s.DeactivateStub == nil {
+		panic("StubbedSessionManager.Deactivate: nil method stub")
+	}
+	s.deactivateCalls = append(s.deactivateCalls, struct {
+		Db      *sql.DB
+		UserIds []int64
+	}{Db: db, UserIds: userIds})
+	(s.DeactivateStub)(db, userIds...)
+}
+
+// DeactivateCalls returns a slice of calls made to Deactivate. Each element
+// of the slice represents the parameters that were provided.
+func (s *StubbedSessionManager) DeactivateCalls() []struct {
+	Db      *sql.DB
+	UserIds []int64
+} {
+	return s.deactivateCalls
 }
 
 // Compile-time check that the implementation matches the interface.
