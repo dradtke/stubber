@@ -48,7 +48,7 @@
 //
 //	func TestSomething(t *testing.T) {
 //		sm := &StubbedSessionManager{
-//			GetUserID: func(db *sql.DB, username string) (int64, error) {
+//			GetUserIDStub: func(db *sql.DB, username string) (int64, error) {
 //				return 0, nil // or whatever implementation you want
 //			},
 //		}
