@@ -7,17 +7,17 @@ import (
 	"testing"
 
 	main "github.com/dradtke/stubber"
-	"github.com/dradtke/stubber/testdata/pkg"
+	"github.com/dradtke/stubber/testdata/pkg/stubbed"
 )
 
 func TestStubber(t *testing.T) {
-	expected, err := ioutil.ReadFile("./testdata/pkg/pkg_stubs.go")
+	expected, err := ioutil.ReadFile("./testdata/pkg/stubbed/stubbed.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	main.Main(nil, "./testdata/pkg", "", &buf)
+	main.Main([]string{"./testdata/pkg"}, "", &buf)
 	t.Log(buf.String())
 
 	if !bytes.Equal(buf.Bytes(), expected) {
@@ -26,7 +26,7 @@ func TestStubber(t *testing.T) {
 }
 
 func TestPkg(t *testing.T) {
-	sm := pkg.StubbedSessionManager{
+	sm := stubbed.SessionManager{
 		GetUserIDStub: func(db *sql.DB, username string) (int64, error) {
 			return 13, nil
 		},
