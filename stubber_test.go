@@ -7,17 +7,17 @@ import (
 	"testing"
 
 	main "github.com/dradtke/stubber"
-	"github.com/dradtke/stubber/testdata/pkg/stubbed"
+	"github.com/dradtke/stubber/stubbertest/stubbed"
 )
 
 func TestStubber(t *testing.T) {
-	expected, err := ioutil.ReadFile("./testdata/pkg/stubbed/stubbed.go")
+	expected, err := ioutil.ReadFile("./stubbertest/stubbed/stubbed.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	main.Main([]string{"./testdata/pkg"}, "", &buf)
+	main.Main([]string{"./stubbertest"}, "", &buf)
 	t.Log(buf.String())
 
 	if !bytes.Equal(buf.Bytes(), expected) {

@@ -5,10 +5,10 @@ package stubbed
 import (
 	"database/sql"
 
-	"github.com/dradtke/stubber/testdata/pkg"
+	"github.com/dradtke/stubber/stubbertest"
 )
 
-// SessionManager is a stubbed implementation of pkg.SessionManager.
+// SessionManager is a stubbed implementation of stubbertest.SessionManager.
 type SessionManager struct {
 	// GetUserIDStub defines the implementation for GetUserID.
 	GetUserIDStub  func(db *sql.DB, username string) (int64, error)
@@ -67,4 +67,4 @@ func (s *SessionManager) DeactivateCalls() []struct {
 }
 
 // Compile-time check that the implementation matches the interface.
-var _ pkg.SessionManager = (*SessionManager)(nil)
+var _ stubbertest.SessionManager = (*SessionManager)(nil)
