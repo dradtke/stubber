@@ -70,6 +70,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -86,8 +87,8 @@ import (
 var (
 	t = template.Must(template.New("").Parse(`
 {{range $interface := .Interfaces}}
-// {{.Name}} is a stubbed implementation of {{$.InputPackage.Name}}.{{.Name}}.
-type {{.Name}} struct {
+// {{.DstName}} is a stubbed implementation of {{$.InputPackage.Name}}.{{.SrcName}}.
+type {{.DstName}} struct {
 	{{range .Funcs -}}
 	// {{.StubName}} defines the implementation for {{.Name}}.
 	{{.StubName}} func({{.ParamsString}}) {{.ResultsString}}
@@ -97,9 +98,9 @@ type {{.Name}} struct {
 
 {{range .Funcs}}
 // {{.Name}} delegates its behavior to the field {{.StubName}}.
-func (s *{{$interface.Name}}) {{.Name}}({{.ParamsString}}) {{.ResultsString}} {
+func (s *{{$interface.DstName}}) {{.Name}}({{.ParamsString}}) {{.ResultsString}} {
 	if s.{{.StubName}} == nil {
-		panic("{{$interface.Name}}.{{.Name}}: nil method stub")
+		panic("{{$interface.DstName}}.{{.Name}}: nil method stub")
 	}
 	s.{{.CallsName false}} = append(s.{{.CallsName false}}, {{.ParamsStruct}}{ {{.ParamsStructValues}} })
 	{{if .HasResults}}return {{end}}(s.{{.StubName}})({{.ParamNames}})
@@ -107,13 +108,13 @@ func (s *{{$interface.Name}}) {{.Name}}({{.ParamsString}}) {{.ResultsString}} {
 
 // {{.CallsName true}} returns a slice of calls made to {{.Name}}. Each element
 // of the slice represents the parameters that were provided.
-func (s *{{$interface.Name}}) {{.CallsName true}}() []{{.ParamsStruct}} {
+func (s *{{$interface.DstName}}) {{.CallsName true}}() []{{.ParamsStruct}} {
 	return s.{{.CallsName false}}
 }
 {{end}}
 
 // Compile-time check that the implementation matches the interface.
-var _ {{$.InputPackage.Name}}.{{.Name}} = (*{{.Name}})(nil)
+var _ {{$.InputPackage.Name}}.{{.SrcName}} = (*{{.DstName}})(nil)
 {{end}}
 `))
 )
@@ -145,14 +146,26 @@ func Main(inputs []string, outputDir string, out io.Writer) {
 package stubbed
 `)
 
+	dstNameCount := make(map[string]int)
+	allInterfaces := make(map[*packages.Package][]*Interface)
+
 	for _, pkg := range pkgs {
-		log.Printf("found package: %s", pkg.Name)
+		ifaces := FindInterfaces(pkg)
+		for _, iface := range ifaces {
+			dstNameCount[iface.DstName] = dstNameCount[iface.DstName] + 1
+		}
+		allInterfaces[pkg] = ifaces
+	}
+
+	RenameCollisions(allInterfaces, dstNameCount)
+
+	for pkg, ifaces := range allInterfaces {
 		if err := t.Execute(&buf, struct {
 			InputPackage *packages.Package
-			Interfaces   []Interface
+			Interfaces   []*Interface
 		}{
 			InputPackage: pkg,
-			Interfaces:   FindInterfaces(pkg),
+			Interfaces:   ifaces,
 		}); err != nil {
 			log.Fatal(err)
 		}
@@ -176,8 +189,8 @@ package stubbed
 	}
 }
 
-func FindInterfaces(pkg *packages.Package) []Interface {
-	var interfaces []Interface
+func FindInterfaces(pkg *packages.Package) []*Interface {
+	var interfaces []*Interface
 	for _, file := range pkg.Syntax {
 		ast.Inspect(file, func(node ast.Node) bool {
 			if decl, ok := node.(*ast.GenDecl); ok && decl.Tok == token.TYPE {
@@ -195,10 +208,11 @@ func FindInterfaces(pkg *packages.Package) []Interface {
 	return interfaces
 }
 
-func NewInterface(pkg *packages.Package, tspec *ast.TypeSpec, itype *ast.InterfaceType) Interface {
-	iface := Interface{
-		Pkg:  pkg,
-		Name: tspec.Name.Name,
+func NewInterface(pkg *packages.Package, tspec *ast.TypeSpec, itype *ast.InterfaceType) *Interface {
+	iface := &Interface{
+		Pkg:     pkg,
+		SrcName: tspec.Name.Name,
+		DstName: tspec.Name.Name,
 	}
 	for _, method := range itype.Methods.List {
 		ftype, ok := method.Type.(*ast.FuncType)
@@ -209,12 +223,12 @@ func NewInterface(pkg *packages.Package, tspec *ast.TypeSpec, itype *ast.Interfa
 		if name == "_" {
 			continue
 		}
-		iface.Funcs = append(iface.Funcs, NewFunc(name, ftype))
+		iface.Funcs = append(iface.Funcs, NewFunc(pkg, name, ftype))
 	}
 	return iface
 }
 
-func NewFunc(name string, ftype *ast.FuncType) Func {
+func NewFunc(pkg *packages.Package, name string, ftype *ast.FuncType) Func {
 	ifunc := Func{
 		Name: name,
 	}
@@ -222,12 +236,12 @@ func NewFunc(name string, ftype *ast.FuncType) Func {
 		for _, param := range ftype.Params.List {
 			if len(param.Names) == 0 {
 				ifunc.Params = append(ifunc.Params, Var{
-					Type: TypeName(param.Type),
+					Type: TypeName(pkg, param.Type),
 				})
 			} else {
 				for _, ident := range param.Names {
 					ifunc.Params = append(ifunc.Params, Var{
-						Type: TypeName(param.Type),
+						Type: TypeName(pkg, param.Type),
 						Name: ident.Name,
 					})
 				}
@@ -238,11 +252,11 @@ func NewFunc(name string, ftype *ast.FuncType) Func {
 	if ftype.Results != nil {
 		for _, result := range ftype.Results.List {
 			if len(result.Names) == 0 {
-				ifunc.Results = append(ifunc.Results, Var{Type: TypeName(result.Type)})
+				ifunc.Results = append(ifunc.Results, Var{Type: TypeName(pkg, result.Type)})
 			} else {
 				for _, ident := range result.Names {
 					ifunc.Results = append(ifunc.Results, Var{
-						Type: TypeName(result.Type),
+						Type: TypeName(pkg, result.Type),
 						Name: ident.Name,
 					})
 				}
@@ -266,31 +280,34 @@ func ImportPath(pkgPath string) string {
 	return ""
 }
 
-func TypeName(expr ast.Expr) string {
+func TypeName(pkg *packages.Package, expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.ArrayType:
 		if t.Len == nil {
-			return "[]" + TypeName(t.Elt)
+			return "[]" + TypeName(pkg, t.Elt)
 		} else {
 			log.Fatal("Package.TypeName: don't know how to handle non-slice arrays yet")
 		}
 
 	case *ast.Ident:
-		/*
-			if p.External && p.Scope.Lookup(t.Name) != nil {
-				return p.InputName + "." + t.Name
+		// If the identifier represents a value defined within this package,
+		// the output needs to qualify the tpye with the package name.
+		ob := pkg.TypesInfo.Uses[t]
+		if ob != nil {
+			if named, ok := ob.Type().(*types.Named); ok && named.Obj().Pkg() == pkg.Types {
+				return pkg.Name + "." + t.Name
 			}
-		*/
+		}
 		return t.Name
 
 	case *ast.SelectorExpr:
-		return TypeName(t.X) + "." + t.Sel.Name
+		return TypeName(pkg, t.X) + "." + t.Sel.Name
 
 	case *ast.StarExpr:
-		return "*" + TypeName(t.X)
+		return "*" + TypeName(pkg, t.X)
 
 	case *ast.MapType:
-		return "map[" + TypeName(t.Key) + "]" + TypeName(t.Value)
+		return "map[" + TypeName(pkg, t.Key) + "]" + TypeName(pkg, t.Value)
 
 	case *ast.InterfaceType:
 		if t.Methods != nil && len(t.Methods.List) > 0 {
@@ -299,12 +316,12 @@ func TypeName(expr ast.Expr) string {
 		return "interface{}"
 
 	case *ast.Ellipsis:
-		return "..." + TypeName(t.Elt)
+		return "..." + TypeName(pkg, t.Elt)
 
 	case *ast.FuncType:
 		var (
-			params  = FieldListString(t.Params)
-			results = FieldListString(t.Results)
+			params  = FieldListString(pkg, t.Params)
+			results = FieldListString(pkg, t.Results)
 		)
 		return fmt.Sprintf("func(%s) (%s)", params, results)
 
@@ -315,22 +332,22 @@ func TypeName(expr ast.Expr) string {
 	return ""
 }
 
-func FieldListString(fl *ast.FieldList) string {
+func FieldListString(pkg *packages.Package, fl *ast.FieldList) string {
 	var values []string
 	for _, field := range fl.List {
 		var names []string
 		for _, name := range field.Names {
 			names = append(names, name.Name)
 		}
-		values = append(values, strings.Join(names, ", ")+" "+TypeName(field.Type))
+		values = append(values, strings.Join(names, ", ")+" "+TypeName(pkg, field.Type))
 	}
 	return strings.Join(values, ", ")
 }
 
 type Interface struct {
-	Pkg   *packages.Package
-	Name  string
-	Funcs []Func
+	Pkg              *packages.Package
+	SrcName, DstName string
+	Funcs            []Func
 }
 
 type Func struct {
@@ -393,6 +410,22 @@ func (f *Func) HasResults() bool {
 type Var struct {
 	Name string
 	Type string
+}
+
+// RenameCollisions finds types that use the same name across different packages (e.g. Client)
+// and renames the output stub to include the package name (e.g. SecretsClient).
+func RenameCollisions(allInterfaces map[*packages.Package][]*Interface, dstNameCount map[string]int) {
+	for name, count := range dstNameCount {
+		if count > 1 {
+			for _, ifaces := range allInterfaces {
+				for _, iface := range ifaces {
+					if iface.DstName == name {
+						iface.DstName = strings.Title(iface.Pkg.Name) + iface.DstName
+					}
+				}
+			}
+		}
+	}
 }
 
 func joinVars(vars []Var, sep string, public, inStruct bool) string {
