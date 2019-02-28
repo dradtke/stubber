@@ -233,21 +233,19 @@ func NewInterface(pkg *packages.Package, tspec *ast.TypeSpec, itype *ast.Interfa
 		if name == "_" {
 			continue
 		}
-		iface.Funcs = append(iface.Funcs, NewFunc(pkg, name, ftype))
+		iface.Funcs = append(iface.Funcs, NewFunc(pkg, iface, name, ftype))
 	}
 	return iface
 }
 
-func NewFunc(pkg *packages.Package, name string, ftype *ast.FuncType) Func {
+func NewFunc(pkg *packages.Package, iface *Interface, name string, ftype *ast.FuncType) Func {
 	ifunc := Func{
 		Name: name,
 	}
 	if ftype.Params != nil {
 		for _, param := range ftype.Params.List {
 			if len(param.Names) == 0 {
-				ifunc.Params = append(ifunc.Params, Var{
-					Type: TypeName(pkg, param.Type),
-				})
+				log.Fatalf(`interface "%s".%s defines function %s with a nameless parameter, please give it a name`, pkg.PkgPath, iface.SrcName, name)
 			} else {
 				for _, ident := range param.Names {
 					ifunc.Params = append(ifunc.Params, Var{
@@ -476,7 +474,14 @@ func typeName(expr ast.Expr) string {
 
 // TODO: improve this to make some variable names more readable, e.g. "db" -> "DB"
 func publicize(name string) string {
-	return string(unicode.ToTitle(rune(name[0]))) + name[1:]
+	if len(name) == 0 {
+		panic("can't publicize 0-length name")
+	}
+	firstLetter := string(unicode.ToTitle(rune(name[0])))
+	if len(name) == 1 {
+		return firstLetter
+	}
+	return firstLetter + name[1:]
 }
 
 func isVariadic(typ string) bool {
