@@ -107,7 +107,7 @@ type {{.ImplName}} struct {
 // {{.Name}} delegates its behavior to the field {{.StubName}}.
 func (s *{{$interface.ImplName}}) {{.Name}}{{.ParamsString}} {{.ResultsString}} {
 	if s.{{.StubName}} == nil {
-		panic("{{$interface.ImplName}}.{{.Name}}: nil method stub")
+		panic("{{$interface.DstName}}.{{.Name}}: nil method stub")
 	}
 	s.{{.CallsName false}} = append(s.{{.CallsName false}}, {{.ParamsStruct}}{ {{.ParamsStructValues}} })
 	{{if .HasResults}}return {{end}}(s.{{.StubName}})({{.ParamNames}})
@@ -115,7 +115,7 @@ func (s *{{$interface.ImplName}}) {{.Name}}{{.ParamsString}} {{.ResultsString}} 
 
 // {{.CallsName true}} returns a slice of calls made to {{.Name}}. Each element
 // of the slice represents the parameters that were provided.
-func (s *{{$interface.ImplName}}) {{.CallsName true}}() []{{.ParamsStruct}} {
+func (s *{{$interface.DstName}}) {{.CallsName true}}() []{{.ParamsStruct}} {
 	return s.{{.CallsName false}}
 }
 {{end}}
@@ -128,7 +128,6 @@ var _ {{if $.External}}{{$.InputName}}.{{end}}{{.Name}} = (*{{.ImplName}})(nil)
 
 func main() {
 	var (
-		typeNames = flag.String("types", "", "comma-separated list of type names; defaults to all interfaces")
 		outputDir = flag.String("output", "", "path to output directory; '-' will write result to stdout")
 	)
 
@@ -203,6 +202,7 @@ func Main(types, inputDirs []string, outputDir string, out io.Writer) {
 		if err := t.Execute(&buf, pkg); err != nil {
 			log.Fatal(err)
 		}
+	}
 
 		newFilename := pkg.Pkg.Name + "_stubs.go"
 		code, err := format.Source(buf.Bytes())
@@ -210,14 +210,13 @@ func Main(types, inputDirs []string, outputDir string, out io.Writer) {
 			log.Fatalf("error formatting stubs: %s", err)
 		}
 
-		if out != nil {
-			if _, err := out.Write(code); err != nil {
-				log.Fatalf("failed to write result: %s", err)
-			}
-		} else {
-			if err := ioutil.WriteFile(filepath.Join(outputDir, newFilename), code, 0644); err != nil {
-				log.Fatalf("failed to write output file %s: %s", newFilename, err)
-			}
+	if out != nil {
+		if _, err := out.Write(code); err != nil {
+			log.Fatalf("failed to write result: %s", err)
+		}
+	} else {
+		if err := ioutil.WriteFile(filename, code, 0644); err != nil {
+			log.Fatalf("failed to write output file %s: %s", filename, err)
 		}
 	}
 }
@@ -249,12 +248,35 @@ func NewPackage(inputDir, outputDir string) *Package {
 		Dependencies: make(map[string]struct{}),
 	}
 
-	if outputDir != "" && outputDir != inputDir {
-		p.OutputName = filepath.Base(outputDir)
-		p.External = true
+	if ftype.Results != nil {
+		for _, result := range ftype.Results.List {
+			if len(result.Names) == 0 {
+				ifunc.Results = append(ifunc.Results, Var{Type: TypeName(pkg, result.Type)})
+			} else {
+				for _, ident := range result.Names {
+					ifunc.Results = append(ifunc.Results, Var{
+						Type: TypeName(pkg, result.Type),
+						Name: ident.Name,
+					})
+				}
+			}
+		}
 	}
+	return ifunc
+}
 
-	return p
+func ImportPath(pkgPath string) string {
+	parts := strings.Split(pkgPath, "/")
+	for len(parts) > 0 {
+		path := strings.Join(parts, "/")
+		if _, err := packages.Load(nil, path); err == nil {
+			log.Println("package " + pkgPath + " successfully imported")
+			return path
+		}
+		parts = parts[1:]
+	}
+	log.Fatal("unable to import package: " + pkgPath)
+	return ""
 }
 
 func (p *Package) Check(ts []string) {
