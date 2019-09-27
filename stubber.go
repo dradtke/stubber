@@ -94,7 +94,7 @@ import (
 )
 
 {{range $interface := .Interfaces}}
-// {{.ImplName}} is a stubbed implementation of {{if $.External}}{{$.InputName}}.{{end}}{{.Name}}.
+// {{.ImplName}} is a stubbed implementation of {{.QualName}}.
 type {{.ImplName}} struct {
 	{{range .Funcs -}}
 	// {{.StubName}} defines the implementation for {{.Name}}.
@@ -107,7 +107,7 @@ type {{.ImplName}} struct {
 // {{.Name}} delegates its behavior to the field {{.StubName}}.
 func (s *{{$interface.ImplName}}) {{.Name}}{{.ParamsString}} {{.ResultsString}} {
 	if s.{{.StubName}} == nil {
-		panic("{{$interface.DstName}}.{{.Name}}: nil method stub")
+		panic("{{$interface.ImplName}}.{{.Name}}: nil method stub")
 	}
 	s.{{.CallsName false}} = append(s.{{.CallsName false}}, {{.ParamsStruct}}{ {{.ParamsStructValues}} })
 	{{if .HasResults}}return {{end}}(s.{{.StubName}})({{.ParamNames}})
@@ -115,13 +115,13 @@ func (s *{{$interface.ImplName}}) {{.Name}}{{.ParamsString}} {{.ResultsString}} 
 
 // {{.CallsName true}} returns a slice of calls made to {{.Name}}. Each element
 // of the slice represents the parameters that were provided.
-func (s *{{$interface.DstName}}) {{.CallsName true}}() []{{.ParamsStruct}} {
+func (s *{{$interface.ImplName}}) {{.CallsName true}}() []{{.ParamsStruct}} {
 	return s.{{.CallsName false}}
 }
 {{end}}
 
 // Compile-time check that the implementation matches the interface.
-var _ {{if $.External}}{{$.InputName}}.{{end}}{{.Name}} = (*{{.ImplName}})(nil)
+var _ {{.QualName}} = (*{{.ImplName}})(nil)
 {{end}}
 `))
 )
@@ -129,6 +129,7 @@ var _ {{if $.External}}{{$.InputName}}.{{end}}{{.Name}} = (*{{.ImplName}})(nil)
 func main() {
 	var (
 		outputDir = flag.String("output", "", "path to output directory; '-' will write result to stdout")
+		typeNames = flag.String("types", "", "comma-separated list of type names to stub")
 	)
 
 	log.SetFlags(0)
@@ -158,22 +159,18 @@ func main() {
 }
 
 func Main(types, inputDirs []string, outputDir string, out io.Writer) {
+	if outputDir != "" {
+		if err := os.MkdirAll(outputDir, 0655); err != nil {
+			log.Fatalf("cannot make output directory: %s", err)
+		}
+	}
+
 	var pkgs []*Package
 	for _, inputDir := range inputDirs {
-		inputDirInfo, err := os.Stat(inputDir)
-		if err != nil {
-			log.Fatalf("cannot stat input dir: %s", err)
-		}
-
-		if outputDir != "" {
-			if err := os.MkdirAll(outputDir, inputDirInfo.Mode()); err != nil {
-				log.Fatalf("cannot make output directory: %s", err)
-			}
-		}
-
 		pkg := NewPackage(inputDir, outputDir)
 		pkg.Check(types)
 		pkgs = append(pkgs, pkg)
+		log.Printf("found package: %s", pkg.InputName)
 	}
 
 	// Check for duplicate interface names, e.g. "Client"
@@ -202,21 +199,22 @@ func Main(types, inputDirs []string, outputDir string, out io.Writer) {
 		if err := t.Execute(&buf, pkg); err != nil {
 			log.Fatal(err)
 		}
-	}
 
-		newFilename := pkg.Pkg.Name + "_stubs.go"
 		code, err := format.Source(buf.Bytes())
 		if err != nil {
 			log.Fatalf("error formatting stubs: %s", err)
 		}
 
-	if out != nil {
-		if _, err := out.Write(code); err != nil {
-			log.Fatalf("failed to write result: %s", err)
-		}
-	} else {
-		if err := ioutil.WriteFile(filename, code, 0644); err != nil {
-			log.Fatalf("failed to write output file %s: %s", filename, err)
+		if out != nil {
+			if _, err := out.Write(code); err != nil {
+				log.Fatalf("failed to write result: %s", err)
+			}
+		} else {
+			newFilename := filepath.Join(outputDir, pkg.Pkg.Name+"_stubs.go")
+			log.Printf("writing %s", newFilename)
+			if err := ioutil.WriteFile(newFilename, code, 0644); err != nil {
+				log.Fatalf("failed to write output file %s: %s", newFilename, err)
+			}
 		}
 	}
 }
@@ -225,11 +223,7 @@ type Package struct {
 	// OutputName is the name of the output package.
 	OutputName string
 	// InputName is the name of the input package.
-	InputName string
-	// External is true if the output is in a different package than the
-	// input, indicating that the interface name needs to be qualified if
-	// referenced.
-	External     bool
+	InputName    string
 	Pkg          *packages.Package
 	Interfaces   []*Interface
 	Dependencies map[string]struct{}
@@ -241,28 +235,12 @@ func NewPackage(inputDir, outputDir string) *Package {
 		panic(err)
 	}
 
-	p := &Package{
+	return &Package{
 		InputName:    pkgs[0].Name,
 		OutputName:   pkgs[0].Name,
 		Pkg:          pkgs[0],
 		Dependencies: make(map[string]struct{}),
 	}
-
-	if ftype.Results != nil {
-		for _, result := range ftype.Results.List {
-			if len(result.Names) == 0 {
-				ifunc.Results = append(ifunc.Results, Var{Type: TypeName(pkg, result.Type)})
-			} else {
-				for _, ident := range result.Names {
-					ifunc.Results = append(ifunc.Results, Var{
-						Type: TypeName(pkg, result.Type),
-						Name: ident.Name,
-					})
-				}
-			}
-		}
-	}
-	return ifunc
 }
 
 func ImportPath(pkgPath string) string {
@@ -280,9 +258,7 @@ func ImportPath(pkgPath string) string {
 }
 
 func (p *Package) Check(ts []string) {
-	if p.External {
-		p.Dependencies[p.Pkg.PkgPath] = struct{}{}
-	}
+	p.Dependencies[p.Pkg.PkgPath] = struct{}{}
 
 	for ident, def := range p.Pkg.TypesInfo.Defs {
 		if def == nil || !types.IsInterface(def.Type()) {
@@ -309,8 +285,8 @@ func (p *Package) Check(ts []string) {
 
 		iface := Interface{
 			Name:     ident.Name,
+			QualName: p.InputName + "." + ident.Name,
 			StubName: ident.Name,
-			External: p.External,
 		}
 
 		itype := def.Type().Underlying().(*types.Interface)
@@ -322,23 +298,21 @@ func (p *Package) Check(ts []string) {
 
 			sig := method.Type().(*types.Signature)
 			ifunc := Func{
-				Name:     method.Name(),
-				Pkg:      p.Pkg.Types,
-				Params:   sig.Params(),
-				Results:  sig.Results(),
-				External: p.External,
+				Name:      method.Name(),
+				Pkg:       p.Pkg.Types,
+				Signature: sig,
 			}
 
-			for j := 0; j < ifunc.Params.Len(); j++ {
-				if named, ok := indirect(ifunc.Params.At(j).Type()).(*types.Named); ok {
+			for j := 0; j < ifunc.Signature.Params().Len(); j++ {
+				if named, ok := indirect(ifunc.Signature.Params().At(j).Type()).(*types.Named); ok {
 					if pkg := named.Obj().Pkg(); pkg != nil {
 						p.Dependencies[pkg.Path()] = struct{}{}
 					}
 				}
 			}
 
-			for j := 0; j < ifunc.Results.Len(); j++ {
-				if named, ok := indirect(ifunc.Results.At(j).Type()).(*types.Named); ok {
+			for j := 0; j < ifunc.Signature.Results().Len(); j++ {
+				if named, ok := indirect(ifunc.Signature.Results().At(j).Type()).(*types.Named); ok {
 					if pkg := named.Obj().Pkg(); pkg != nil {
 						p.Dependencies[pkg.Path()] = struct{}{}
 					}
@@ -353,30 +327,21 @@ func (p *Package) Check(ts []string) {
 }
 
 type Interface struct {
-	Name, StubName string
-	Funcs          []Func
-	External       bool
+	Name, QualName, StubName string
+	Funcs                    []Func
 }
 
 func (i *Interface) ImplName() string {
-	if i.External {
-		return i.StubName
-	}
-	return "Stubbed" + i.StubName
+	return i.StubName
 }
 
 type Func struct {
-	Name     string
-	Pkg      *types.Package
-	Params   *types.Tuple
-	Results  *types.Tuple
-	External bool
+	Name      string
+	Pkg       *types.Package
+	Signature *types.Signature
 }
 
 func (f *Func) Qualifier(pkg *types.Package) string {
-	if !f.External && pkg == f.Pkg {
-		return ""
-	}
 	return pkg.Name()
 }
 
@@ -392,23 +357,34 @@ func (f *Func) CallsName(public bool) string {
 }
 
 func (f *Func) ParamsString() string {
-	return types.TypeString(f.Params, f.Qualifier)
+	params := make([]string, f.Signature.Params().Len())
+	for i := 0; i < len(params); i++ {
+		v := f.Signature.Params().At(i)
+		typeString := types.TypeString(v.Type(), f.Qualifier)
+		if f.Signature.Variadic() && i == len(params)-1 {
+			if slice, ok := v.Type().(*types.Slice); ok {
+				typeString = "..." + types.TypeString(slice.Elem(), f.Qualifier)
+			}
+		}
+		params[i] = v.Name() + " " + typeString
+	}
+	return "(" + strings.Join(params, ", ") + ")"
 }
 
 func (f *Func) ParamsStruct() string {
-	var parts []string
-	for i := 0; i < f.Params.Len(); i++ {
-		param := f.Params.At(i)
+	parts := make([]string, f.Signature.Params().Len())
+	for i := 0; i < len(parts); i++ {
+		param := f.Signature.Params().At(i)
 		typeString := types.TypeString(param.Type(), f.Qualifier)
-		parts = append(parts, publicize(param.Name())+" "+typeString)
+		parts[i] = publicize(param.Name()) + " " + typeString
 	}
 	return "struct{" + strings.Join(parts, ";") + "}"
 }
 
 func (f *Func) ParamsStructValues() string {
 	var buf bytes.Buffer
-	for i := 0; i < f.Params.Len(); i++ {
-		name := f.Params.At(i).Name()
+	for i := 0; i < f.Signature.Params().Len(); i++ {
+		name := f.Signature.Params().At(i).Name()
 		buf.WriteString(publicize(name) + ": " + name + ",")
 	}
 	return buf.String()
@@ -416,18 +392,18 @@ func (f *Func) ParamsStructValues() string {
 
 func (f *Func) ParamNames() string {
 	var parts []string
-	for i := 0; i < f.Params.Len(); i++ {
-		parts = append(parts, f.Params.At(i).Name())
+	for i := 0; i < f.Signature.Params().Len(); i++ {
+		parts = append(parts, f.Signature.Params().At(i).Name())
 	}
 	return strings.Join(parts, ", ")
 }
 
 func (f *Func) ResultsString() string {
-	return types.TypeString(f.Results, f.Qualifier)
+	return types.TypeString(f.Signature.Results(), f.Qualifier)
 }
 
 func (f *Func) HasResults() bool {
-	return f.Results.Len() != 0
+	return f.Signature.Results().Len() != 0
 }
 
 // TODO: improve this to make some variable names more readable, e.g. "db" -> "DB"
@@ -442,10 +418,10 @@ func publicize(name string) string {
 // returns its argument.
 func indirect(t types.Type) types.Type {
 	for {
-		if ptype, ok := t.(*types.Pointer); ok {
-			t = ptype.Elem()
-		} else {
+		ptype, ok := t.(*types.Pointer)
+		if !ok {
 			return t
 		}
+		t = ptype.Elem()
 	}
 }
