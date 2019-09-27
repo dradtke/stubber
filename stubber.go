@@ -237,7 +237,7 @@ func NewPackage(inputDir, outputDir string) *Package {
 
 	return &Package{
 		InputName:    pkgs[0].Name,
-		OutputName:   pkgs[0].Name,
+		OutputName:   filepath.Base(outputDir),
 		Pkg:          pkgs[0],
 		Dependencies: make(map[string]struct{}),
 	}
