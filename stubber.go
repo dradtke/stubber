@@ -223,10 +223,11 @@ type Package struct {
 	// OutputName is the name of the output package.
 	OutputName string
 	// InputName is the name of the input package.
-	InputName    string
-	Pkg          *packages.Package
-	Interfaces   []*Interface
-	Dependencies map[string]struct{}
+	InputName       string
+	Pkg             *packages.Package
+	Interfaces      []*Interface
+	Dependencies    map[string]struct{}
+	DependencyNames map[string]struct{}
 }
 
 func NewPackage(inputDir, outputDir string) *Package {
@@ -236,10 +237,11 @@ func NewPackage(inputDir, outputDir string) *Package {
 	}
 
 	return &Package{
-		InputName:    pkgs[0].Name,
-		OutputName:   filepath.Base(outputDir),
-		Pkg:          pkgs[0],
-		Dependencies: make(map[string]struct{}),
+		InputName:       pkgs[0].Name,
+		OutputName:      filepath.Base(outputDir),
+		Pkg:             pkgs[0],
+		Dependencies:    make(map[string]struct{}),
+		DependencyNames: make(map[string]struct{}),
 	}
 }
 
@@ -284,6 +286,7 @@ func (p *Package) Check(ts []string) {
 		}
 
 		iface := Interface{
+			Pkg:      p,
 			Name:     ident.Name,
 			QualName: p.InputName + "." + ident.Name,
 			StubName: ident.Name,
@@ -298,6 +301,7 @@ func (p *Package) Check(ts []string) {
 
 			sig := method.Type().(*types.Signature)
 			ifunc := Func{
+				Interface: &iface,
 				Name:      method.Name(),
 				Pkg:       p.Pkg.Types,
 				Signature: sig,
@@ -307,6 +311,7 @@ func (p *Package) Check(ts []string) {
 				if named, ok := indirect(ifunc.Signature.Params().At(j).Type()).(*types.Named); ok {
 					if pkg := named.Obj().Pkg(); pkg != nil {
 						p.Dependencies[pkg.Path()] = struct{}{}
+						p.DependencyNames[pkg.Name()] = struct{}{}
 					}
 				}
 			}
@@ -315,6 +320,7 @@ func (p *Package) Check(ts []string) {
 				if named, ok := indirect(ifunc.Signature.Results().At(j).Type()).(*types.Named); ok {
 					if pkg := named.Obj().Pkg(); pkg != nil {
 						p.Dependencies[pkg.Path()] = struct{}{}
+						p.DependencyNames[pkg.Name()] = struct{}{}
 					}
 				}
 			}
@@ -327,6 +333,7 @@ func (p *Package) Check(ts []string) {
 }
 
 type Interface struct {
+	Pkg                      *Package
 	Name, QualName, StubName string
 	Funcs                    []Func
 }
@@ -336,6 +343,7 @@ func (i *Interface) ImplName() string {
 }
 
 type Func struct {
+	Interface *Interface
 	Name      string
 	Pkg       *types.Package
 	Signature *types.Signature
@@ -356,17 +364,27 @@ func (f *Func) CallsName(public bool) string {
 	return string(unicode.ToLower(rune(f.Name[0]))) + f.Name[1:] + "Calls"
 }
 
+func ensureNoCollision(name string, depNames map[string]struct{}) string {
+	for {
+		if _, ok := depNames[name]; !ok {
+			return name
+		}
+		name = "_" + name
+	}
+}
+
 func (f *Func) ParamsString() string {
 	params := make([]string, f.Signature.Params().Len())
 	for i := 0; i < len(params); i++ {
 		v := f.Signature.Params().At(i)
+		name := ensureNoCollision(v.Name(), f.Interface.Pkg.DependencyNames)
 		typeString := types.TypeString(v.Type(), f.Qualifier)
 		if f.Signature.Variadic() && i == len(params)-1 {
 			if slice, ok := v.Type().(*types.Slice); ok {
 				typeString = "..." + types.TypeString(slice.Elem(), f.Qualifier)
 			}
 		}
-		params[i] = v.Name() + " " + typeString
+		params[i] = name + " " + typeString
 	}
 	return "(" + strings.Join(params, ", ") + ")"
 }
@@ -375,8 +393,9 @@ func (f *Func) ParamsStruct() string {
 	parts := make([]string, f.Signature.Params().Len())
 	for i := 0; i < len(parts); i++ {
 		param := f.Signature.Params().At(i)
+		name := ensureNoCollision(publicize(param.Name()), f.Interface.Pkg.DependencyNames)
 		typeString := types.TypeString(param.Type(), f.Qualifier)
-		parts[i] = publicize(param.Name()) + " " + typeString
+		parts[i] = name + " " + typeString
 	}
 	return "struct{" + strings.Join(parts, ";") + "}"
 }
@@ -384,8 +403,9 @@ func (f *Func) ParamsStruct() string {
 func (f *Func) ParamsStructValues() string {
 	var buf bytes.Buffer
 	for i := 0; i < f.Signature.Params().Len(); i++ {
-		name := f.Signature.Params().At(i).Name()
-		buf.WriteString(publicize(name) + ": " + name + ",")
+		valueName := f.Signature.Params().At(i).Name()
+		keyName := publicize(valueName)
+		buf.WriteString(ensureNoCollision(keyName, f.Interface.Pkg.DependencyNames) + ": " + ensureNoCollision(valueName, f.Interface.Pkg.DependencyNames) + ",")
 	}
 	return buf.String()
 }
@@ -393,7 +413,8 @@ func (f *Func) ParamsStructValues() string {
 func (f *Func) ParamNames() string {
 	var parts []string
 	for i := 0; i < f.Signature.Params().Len(); i++ {
-		parts = append(parts, f.Signature.Params().At(i).Name())
+		name := ensureNoCollision(f.Signature.Params().At(i).Name(), f.Interface.Pkg.DependencyNames)
+		parts = append(parts, name)
 	}
 	return strings.Join(parts, ", ")
 }
