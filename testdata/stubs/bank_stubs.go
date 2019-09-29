@@ -2,14 +2,15 @@
 
 // +build !nostubs
 
-package bank
+package stubs
 
 import (
+	"github.com/dradtke/stubber/testdata/bank"
 	"io"
 )
 
-// StubbedAccount is a stubbed implementation of Account.
-type StubbedAccount struct {
+// Account is a stubbed implementation of bank.Account.
+type Account struct {
 	// BalanceStub defines the implementation for Balance.
 	BalanceStub  func() int
 	balanceCalls []struct{}
@@ -19,9 +20,9 @@ type StubbedAccount struct {
 }
 
 // Balance delegates its behavior to the field BalanceStub.
-func (s *StubbedAccount) Balance() int {
+func (s *Account) Balance() int {
 	if s.BalanceStub == nil {
-		panic("StubbedAccount.Balance: nil method stub")
+		panic("Account.Balance: nil method stub")
 	}
 	s.balanceCalls = append(s.balanceCalls, struct{}{})
 	return (s.BalanceStub)()
@@ -29,14 +30,14 @@ func (s *StubbedAccount) Balance() int {
 
 // BalanceCalls returns a slice of calls made to Balance. Each element
 // of the slice represents the parameters that were provided.
-func (s *StubbedAccount) BalanceCalls() []struct{} {
+func (s *Account) BalanceCalls() []struct{} {
 	return s.balanceCalls
 }
 
 // Summarize delegates its behavior to the field SummarizeStub.
-func (s *StubbedAccount) Summarize(w io.Writer) {
+func (s *Account) Summarize(w io.Writer) {
 	if s.SummarizeStub == nil {
-		panic("StubbedAccount.Summarize: nil method stub")
+		panic("Account.Summarize: nil method stub")
 	}
 	s.summarizeCalls = append(s.summarizeCalls, struct{ W io.Writer }{W: w})
 	(s.SummarizeStub)(w)
@@ -44,15 +45,15 @@ func (s *StubbedAccount) Summarize(w io.Writer) {
 
 // SummarizeCalls returns a slice of calls made to Summarize. Each element
 // of the slice represents the parameters that were provided.
-func (s *StubbedAccount) SummarizeCalls() []struct{ W io.Writer } {
+func (s *Account) SummarizeCalls() []struct{ W io.Writer } {
 	return s.summarizeCalls
 }
 
 // Compile-time check that the implementation matches the interface.
-var _ Account = (*StubbedAccount)(nil)
+var _ bank.Account = (*Account)(nil)
 
-// StubbedWithdrawableAccount is a stubbed implementation of WithdrawableAccount.
-type StubbedWithdrawableAccount struct {
+// WithdrawableAccount is a stubbed implementation of bank.WithdrawableAccount.
+type WithdrawableAccount struct {
 	// BalanceStub defines the implementation for Balance.
 	BalanceStub  func() int
 	balanceCalls []struct{}
@@ -65,9 +66,9 @@ type StubbedWithdrawableAccount struct {
 }
 
 // Balance delegates its behavior to the field BalanceStub.
-func (s *StubbedWithdrawableAccount) Balance() int {
+func (s *WithdrawableAccount) Balance() int {
 	if s.BalanceStub == nil {
-		panic("StubbedWithdrawableAccount.Balance: nil method stub")
+		panic("WithdrawableAccount.Balance: nil method stub")
 	}
 	s.balanceCalls = append(s.balanceCalls, struct{}{})
 	return (s.BalanceStub)()
@@ -75,14 +76,14 @@ func (s *StubbedWithdrawableAccount) Balance() int {
 
 // BalanceCalls returns a slice of calls made to Balance. Each element
 // of the slice represents the parameters that were provided.
-func (s *StubbedWithdrawableAccount) BalanceCalls() []struct{} {
+func (s *WithdrawableAccount) BalanceCalls() []struct{} {
 	return s.balanceCalls
 }
 
 // Summarize delegates its behavior to the field SummarizeStub.
-func (s *StubbedWithdrawableAccount) Summarize(w io.Writer) {
+func (s *WithdrawableAccount) Summarize(w io.Writer) {
 	if s.SummarizeStub == nil {
-		panic("StubbedWithdrawableAccount.Summarize: nil method stub")
+		panic("WithdrawableAccount.Summarize: nil method stub")
 	}
 	s.summarizeCalls = append(s.summarizeCalls, struct{ W io.Writer }{W: w})
 	(s.SummarizeStub)(w)
@@ -90,14 +91,14 @@ func (s *StubbedWithdrawableAccount) Summarize(w io.Writer) {
 
 // SummarizeCalls returns a slice of calls made to Summarize. Each element
 // of the slice represents the parameters that were provided.
-func (s *StubbedWithdrawableAccount) SummarizeCalls() []struct{ W io.Writer } {
+func (s *WithdrawableAccount) SummarizeCalls() []struct{ W io.Writer } {
 	return s.summarizeCalls
 }
 
 // Withdraw delegates its behavior to the field WithdrawStub.
-func (s *StubbedWithdrawableAccount) Withdraw(amount int) (int, error) {
+func (s *WithdrawableAccount) Withdraw(amount int) (int, error) {
 	if s.WithdrawStub == nil {
-		panic("StubbedWithdrawableAccount.Withdraw: nil method stub")
+		panic("WithdrawableAccount.Withdraw: nil method stub")
 	}
 	s.withdrawCalls = append(s.withdrawCalls, struct{ Amount int }{Amount: amount})
 	return (s.WithdrawStub)(amount)
@@ -105,9 +106,9 @@ func (s *StubbedWithdrawableAccount) Withdraw(amount int) (int, error) {
 
 // WithdrawCalls returns a slice of calls made to Withdraw. Each element
 // of the slice represents the parameters that were provided.
-func (s *StubbedWithdrawableAccount) WithdrawCalls() []struct{ Amount int } {
+func (s *WithdrawableAccount) WithdrawCalls() []struct{ Amount int } {
 	return s.withdrawCalls
 }
 
 // Compile-time check that the implementation matches the interface.
-var _ WithdrawableAccount = (*StubbedWithdrawableAccount)(nil)
+var _ bank.WithdrawableAccount = (*WithdrawableAccount)(nil)

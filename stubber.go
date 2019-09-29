@@ -236,13 +236,17 @@ func NewPackage(inputDir, outputDir string) *Package {
 		panic(err)
 	}
 
-	return &Package{
+	p := Package{
 		InputName:       pkgs[0].Name,
 		OutputName:      filepath.Base(outputDir),
 		Pkg:             pkgs[0],
 		Dependencies:    make(map[string]struct{}),
 		DependencyNames: make(map[string]struct{}),
 	}
+	if outputDir == "" {
+		p.OutputName = "stubs"
+	}
+	return &p
 }
 
 func ImportPath(pkgPath string) string {
@@ -427,12 +431,18 @@ func (f *Func) HasResults() bool {
 	return f.Signature.Results().Len() != 0
 }
 
-// TODO: improve this to make some variable names more readable, e.g. "db" -> "DB"
 func publicize(name string) string {
 	if len(name) == 0 {
 		panic("empty name found, make sure all your interface parameters have a name!")
 	}
-	return string(unicode.ToTitle(rune(name[0]))) + name[1:]
+	// Some well-known names can be given better names than the default capitalization algorithm,
+	// i.e. DB is better than Db.
+	switch name {
+	case "db":
+		return "DB"
+	default:
+		return string(unicode.ToTitle(rune(name[0]))) + name[1:]
+	}
 }
 
 // indirect returns the type that t points to. If it's not a pointer it
