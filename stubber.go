@@ -126,11 +126,24 @@ var _ {{.QualName}} = (*{{.ImplName}})(nil)
 `))
 )
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return strings.Join(*i, ",")
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 func main() {
 	var (
 		outputDir = flag.String("output", "", "path to output directory; '-' will write result to stdout")
 		typeNames = flag.String("types", "", "comma-separated list of type names to stub")
 	)
+	var renameFlags arrayFlags
+	flag.Var(&renameFlags, "rename", "rename an interface to something else in the output")
 
 	log.SetFlags(0)
 	log.SetPrefix("stubber: ")
@@ -155,10 +168,16 @@ func main() {
 		*outputDir = "."
 	}
 
-	Main(types, inputDirs, *outputDir, out)
+	renames := make(map[string]string)
+	for _, rf := range renameFlags {
+		parts := strings.Split(rf, "=")
+		renames[parts[0]] = parts[1]
+	}
+
+	Main(types, inputDirs, *outputDir, out, renames)
 }
 
-func Main(types, inputDirs []string, outputDir string, out io.Writer) {
+func Main(types, inputDirs []string, outputDir string, out io.Writer, renames map[string]string) {
 	if outputDir != "" {
 		if err := os.MkdirAll(outputDir, 0655); err != nil {
 			log.Fatalf("cannot make output directory: %s", err)
@@ -171,6 +190,16 @@ func Main(types, inputDirs []string, outputDir string, out io.Writer) {
 		pkg.Check(types)
 		pkgs = append(pkgs, pkg)
 		log.Printf("found package: %s", pkg.InputName)
+	}
+
+	// Check for explicit renames.
+	for _, pkg := range pkgs {
+		for _, iface := range pkg.Interfaces {
+			qualName := pkg.Pkg.Name + "." + iface.StubName
+			if newName := renames[qualName]; newName != "" {
+				iface.StubName = newName
+			}
+		}
 	}
 
 	// Check for duplicate interface names, e.g. "Client"
