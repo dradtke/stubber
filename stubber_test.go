@@ -23,7 +23,7 @@ func init() {
 
 func TestStubber(t *testing.T) {
 	if update {
-		main.Main(nil, []string{"./testdata/bank"}, "./testdata/stubs", nil)
+		main.Main(nil, []string{"./testdata/bank"}, "./testdata/stubs", nil, nil)
 		if v, err := exec.Command("go", "build", "-o", os.DevNull, "./testdata/stubs").CombinedOutput(); err != nil {
 			t.Errorf("new golden file failed to build:\n%s", string(v))
 		}
@@ -31,7 +31,7 @@ func TestStubber(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	main.Main(nil, []string{"./testdata/bank"}, "", &buf)
+	main.Main(nil, []string{"./testdata/bank"}, "", &buf, nil)
 
 	expected, err := ioutil.ReadFile("./testdata/stubs/bank_stubs.go")
 	if err != nil {

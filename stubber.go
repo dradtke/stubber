@@ -231,6 +231,7 @@ func Main(types, inputDirs []string, outputDir string, out io.Writer, renames ma
 
 		code, err := format.Source(buf.Bytes())
 		if err != nil {
+			log.Println(buf.String())
 			log.Fatalf("error formatting stubs: %s", err)
 		}
 
@@ -265,9 +266,14 @@ func NewPackage(inputDir, outputDir string) *Package {
 		panic(err)
 	}
 
+	absOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		panic(err)
+	}
+
 	p := Package{
 		InputName:       pkgs[0].Name,
-		OutputName:      filepath.Base(outputDir),
+		OutputName:      filepath.Base(absOutputDir),
 		Pkg:             pkgs[0],
 		Dependencies:    make(map[string]struct{}),
 		DependencyNames: make(map[string]struct{}),
