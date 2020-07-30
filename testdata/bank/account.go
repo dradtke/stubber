@@ -1,7 +1,14 @@
 package bank
 
 import (
+	"errors"
 	"io"
+)
+
+//go:generate stubber
+
+var (
+	ErrBalanceExceeded = errors.New("balance exceeded")
 )
 
 type Account interface {
@@ -13,5 +20,3 @@ type WithdrawableAccount interface {
 	Account
 	Withdraw(amount int) (int, error)
 }
-
-//go:generate stubber

@@ -67,7 +67,9 @@ package main
 import (
 	"bytes"
 	"flag"
+	"go/ast"
 	"go/format"
+	"go/token"
 	"go/types"
 	"html/template"
 	"io"
@@ -298,18 +300,30 @@ func ImportPath(pkgPath string) string {
 	return ""
 }
 
+func findInterfaceDefs(pkg *packages.Package) map[*ast.Ident]types.Object {
+	m := make(map[*ast.Ident]types.Object)
+	for _, f := range pkg.Syntax {
+		for _, decl := range f.Decls {
+			if gen, ok := decl.(*ast.GenDecl); ok {
+				if gen.Tok == token.TYPE {
+					for _, spec := range gen.Specs {
+						if tipe, ok := spec.(*ast.TypeSpec); ok {
+							if def := pkg.TypesInfo.Defs[tipe.Name]; types.IsInterface(def.Type()) {
+								m[tipe.Name] = def
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return m
+}
+
 func (p *Package) Check(ts []string) {
 	p.Dependencies[p.Pkg.PkgPath] = struct{}{}
 
-	for ident, def := range p.Pkg.TypesInfo.Defs {
-		if def == nil || !types.IsInterface(def.Type()) {
-			continue
-		}
-
-		if def.Parent() != p.Pkg.Types.Scope() {
-			continue
-		}
-
+	for ident, def := range findInterfaceDefs(p.Pkg) {
 		// If any type names were specified, make sure this type was included.
 		if len(ts) > 0 {
 			var include bool
